@@ -4,6 +4,7 @@
 - generate `.agents/skills/gstack*/SKILL.md` from the same `.tmpl` templates as Claude
 - make setup, browse discovery, tests, CI, and docs understand both Claude and Codex installs
 - harden the canonical Codex bootstrap path so installs land in `~/.codex/skills/` and browse resolves there first
+- derive Codex skill inventories/support links from the repo layout so future skills do not silently miss Codex wiring
 - add Codex-facing repo docs (`AGENTS.md`, `agents/openai.yaml`) and generated support links under `.agents/skills/gstack`
 
 ## What Changed
@@ -22,8 +23,10 @@
   - `bin/dev-setup` and `bin/dev-teardown` cover the Codex support tree alongside Claude dev mode
   - Codex installs now link into `~/.codex/skills/`, backed by the generated `.agents/skills/` tree
   - `browse/src/find-browse.ts` and `browse/bin/find-browse` now prefer `.codex`, then `.agents`, then legacy Claude paths
+  - Codex support links now sync from discovered skills instead of a hand-maintained list
 - quality gates
   - extend tests for Codex freshness/frontmatter/path safety
+  - discover skills/templates dynamically in tests and `skill:check`, so new skills automatically get Codex coverage
   - run Codex dry-run generation in CI
 - docs
   - add `AGENTS.md`
