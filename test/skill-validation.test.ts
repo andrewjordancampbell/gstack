@@ -2,35 +2,16 @@ import { describe, test, expect } from 'bun:test';
 import { validateSkill, extractRemoteSlugPatterns, extractWeightsFromTable } from './helpers/skill-parser';
 import { ALL_COMMANDS, COMMAND_DESCRIPTIONS, READ_COMMANDS, WRITE_COMMANDS, META_COMMANDS } from '../browse/src/commands';
 import { SNAPSHOT_FLAGS } from '../browse/src/snapshot';
+import { discoverSkillSpecs } from '../scripts/skill-manifest';
 import * as fs from 'fs';
 import * as path from 'path';
 
 const ROOT = path.resolve(import.meta.dir, '..');
-const CODEX_SKILLS = [
-  '.',
-  'browse',
-  'design-consultation',
-  'document-release',
-  'gstack-upgrade',
-  'plan-ceo-review',
-  'plan-design-review',
-  'plan-eng-review',
-  'qa',
-  'qa-design-review',
-  'qa-only',
-  'retro',
-  'review',
-  'setup-browser-cookies',
-  'ship',
-];
-
-function codexSkillName(dir: string): string {
-  if (dir === '.') return 'gstack';
-  return dir.startsWith('gstack-') ? dir : `gstack-${dir}`;
-}
+const SKILL_SPECS = discoverSkillSpecs(ROOT);
+const CODEX_SKILLS = SKILL_SPECS.map(skill => skill.dir);
 
 function codexSkillPath(dir: string): string {
-  return path.join(ROOT, '.agents', 'skills', codexSkillName(dir), 'SKILL.md');
+  return SKILL_SPECS.find(skill => skill.dir === dir)!.codexOutputPath;
 }
 
 function frontmatter(content: string): string {

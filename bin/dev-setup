@@ -44,28 +44,8 @@ ln -s "$REPO_ROOT" "$GSTACK_LINK"
 # 5. Run setup via the symlink so it detects .claude/skills/ as its parent
 "$GSTACK_LINK/setup"
 
-# 6. Ensure Codex support links exist inside .agents/skills/gstack
-mkdir -p "$REPO_ROOT/.agents/skills/gstack"
-ln -snf ../../../bin "$REPO_ROOT/.agents/skills/gstack/bin"
-ln -snf ../../../browse "$REPO_ROOT/.agents/skills/gstack/browse"
-ln -snf ../../../design-consultation "$REPO_ROOT/.agents/skills/gstack/design-consultation"
-ln -snf ../../../document-release "$REPO_ROOT/.agents/skills/gstack/document-release"
-ln -snf ../../../gstack-upgrade "$REPO_ROOT/.agents/skills/gstack/gstack-upgrade"
-ln -snf ../../../plan-ceo-review "$REPO_ROOT/.agents/skills/gstack/plan-ceo-review"
-ln -snf ../../../plan-design-review "$REPO_ROOT/.agents/skills/gstack/plan-design-review"
-ln -snf ../../../plan-eng-review "$REPO_ROOT/.agents/skills/gstack/plan-eng-review"
-ln -snf ../../../qa "$REPO_ROOT/.agents/skills/gstack/qa"
-ln -snf ../../../qa-design-review "$REPO_ROOT/.agents/skills/gstack/qa-design-review"
-ln -snf ../../../qa-only "$REPO_ROOT/.agents/skills/gstack/qa-only"
-ln -snf ../../../review "$REPO_ROOT/.agents/skills/gstack/review"
-ln -snf ../../../retro "$REPO_ROOT/.agents/skills/gstack/retro"
-ln -snf ../../../scripts "$REPO_ROOT/.agents/skills/gstack/scripts"
-ln -snf ../../../setup "$REPO_ROOT/.agents/skills/gstack/setup"
-ln -snf ../../../setup-browser-cookies "$REPO_ROOT/.agents/skills/gstack/setup-browser-cookies"
-ln -snf ../../../ship "$REPO_ROOT/.agents/skills/gstack/ship"
-ln -snf ../../../CHANGELOG.md "$REPO_ROOT/.agents/skills/gstack/CHANGELOG.md"
-ln -snf ../../../package.json "$REPO_ROOT/.agents/skills/gstack/package.json"
-ln -snf ../../../VERSION "$REPO_ROOT/.agents/skills/gstack/VERSION"
+# 6. Refresh the generated Codex tree so new skills/support entries are discovered automatically
+(cd "$REPO_ROOT" && bun run gen:skill-docs --host codex >/dev/null)
 
 echo ""
 echo "Dev mode active. Claude resolves from .claude/skills/gstack."

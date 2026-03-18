@@ -9,35 +9,19 @@
  */
 
 import { validateSkill } from '../test/helpers/skill-parser';
+import { discoverCodexSupportLinks, discoverSkillSpecs } from './skill-manifest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 
 const ROOT = path.resolve(import.meta.dir, '..');
-
-// Find all SKILL.md files
-const SKILL_FILES = [
-  'SKILL.md',
-  'browse/SKILL.md',
-  'qa/SKILL.md',
-  'qa-only/SKILL.md',
-  'ship/SKILL.md',
-  'review/SKILL.md',
-  'retro/SKILL.md',
-  'plan-ceo-review/SKILL.md',
-  'plan-eng-review/SKILL.md',
-  'setup-browser-cookies/SKILL.md',
-  'plan-design-review/SKILL.md',
-  'qa-design-review/SKILL.md',
-  'gstack-upgrade/SKILL.md',
-  'document-release/SKILL.md',
-].filter(f => fs.existsSync(path.join(ROOT, f)));
-
-const CODEX_SKILLS = fs.existsSync(path.join(ROOT, '.agents', 'skills'))
-  ? fs.readdirSync(path.join(ROOT, '.agents', 'skills'))
-      .map(dir => path.join('.agents', 'skills', dir, 'SKILL.md'))
-      .filter(file => fs.existsSync(path.join(ROOT, file)))
-  : [];
+const SKILL_SPECS = discoverSkillSpecs(ROOT);
+const SKILL_FILES = SKILL_SPECS
+  .map(spec => path.relative(ROOT, spec.outputPath))
+  .filter(file => fs.existsSync(path.join(ROOT, file)));
+const CODEX_SKILLS = SKILL_SPECS
+  .map(spec => path.relative(ROOT, spec.codexOutputPath))
+  .filter(file => fs.existsSync(path.join(ROOT, file)));
 
 let hasErrors = false;
 
@@ -71,8 +55,6 @@ for (const file of SKILL_FILES) {
   }
 }
 
-// ─── Templates ──────────────────────────────────────────────
-
 console.log('\n  Codex skills:');
 for (const file of CODEX_SKILLS) {
   const content = fs.readFileSync(path.join(ROOT, file), 'utf-8');
@@ -86,13 +68,29 @@ for (const file of CODEX_SKILLS) {
   console.log(`  \u2705 ${file.padEnd(30)} — frontmatter + paths look good`);
 }
 
+console.log('\n  Codex support tree:');
+for (const link of discoverCodexSupportLinks(ROOT)) {
+  try {
+    const target = fs.readlinkSync(link.linkPath);
+    if (target !== link.target) {
+      hasErrors = true;
+      console.log(`  \u274c ${path.relative(ROOT, link.linkPath).padEnd(30)} — points to ${target}, expected ${link.target}`);
+      continue;
+    }
+    console.log(`  \u2705 ${path.relative(ROOT, link.linkPath).padEnd(30)} — ${target}`);
+  } catch {
+    hasErrors = true;
+    console.log(`  \u274c ${path.relative(ROOT, link.linkPath).padEnd(30)} — missing support link`);
+  }
+}
+
 // ─── Templates ──────────────────────────────────────────────
 
 console.log('\n  Templates:');
-const TEMPLATES = [
-  { tmpl: 'SKILL.md.tmpl', output: 'SKILL.md' },
-  { tmpl: 'browse/SKILL.md.tmpl', output: 'browse/SKILL.md' },
-];
+const TEMPLATES = SKILL_SPECS.map(spec => ({
+  tmpl: path.relative(ROOT, spec.templatePath),
+  output: path.relative(ROOT, spec.outputPath),
+}));
 
 for (const { tmpl, output } of TEMPLATES) {
   const tmplPath = path.join(ROOT, tmpl);
@@ -107,14 +105,6 @@ for (const { tmpl, output } of TEMPLATES) {
     continue;
   }
   console.log(`  \u2705 ${tmpl.padEnd(30)} \u2192 ${output}`);
-}
-
-// Skills without templates
-for (const file of SKILL_FILES) {
-  const tmplPath = path.join(ROOT, file + '.tmpl');
-  if (!fs.existsSync(tmplPath) && !TEMPLATES.some(t => t.output === file)) {
-    console.log(`  \u26a0\ufe0f  ${file.padEnd(30)} — no template (OK if no $B commands)`);
-  }
 }
 
 // ─── Freshness ──────────────────────────────────────────────

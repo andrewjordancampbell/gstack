@@ -28,6 +28,13 @@ ensure_playwright_browser() {
   ) >/dev/null 2>&1
 }
 
+sync_codex_tree() {
+  (
+    cd "$REPO_ROOT"
+    bun run gen:skill-docs --host codex >/dev/null
+  )
+}
+
 link_claude_local() {
   local skills_basename
   skills_basename="$(basename "$SKILLS_DIR")"
@@ -147,10 +154,12 @@ case "$HOST" in
     link_claude_local
     ;;
   codex)
+    sync_codex_tree
     link_codex_global
     ;;
   auto)
     if command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]; then
+      sync_codex_tree
       link_codex_global
     fi
     if [ -d "$HOME/.claude" ]; then

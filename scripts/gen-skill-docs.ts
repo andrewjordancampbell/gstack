@@ -11,6 +11,7 @@
 
 import { COMMAND_DESCRIPTIONS } from '../browse/src/commands';
 import { SNAPSHOT_FLAGS } from '../browse/src/snapshot';
+import { discoverCodexSupportLinks, discoverSkillSpecs } from './skill-manifest';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -32,22 +33,11 @@ if (HOST !== 'claude' && HOST !== 'codex') {
   throw new Error(`Invalid --host value: ${HOST}. Expected "claude" or "codex".`);
 }
 
-const KNOWN_SKILLS = [
-  'browse',
-  'design-consultation',
-  'document-release',
-  'gstack-upgrade',
-  'plan-ceo-review',
-  'plan-design-review',
-  'plan-eng-review',
-  'qa',
-  'qa-design-review',
-  'qa-only',
-  'retro',
-  'review',
-  'setup-browser-cookies',
-  'ship',
-] as const;
+const SKILL_SPECS = discoverSkillSpecs(ROOT);
+const KNOWN_SKILLS = SKILL_SPECS
+  .filter(spec => spec.dir !== '.')
+  .map(spec => spec.dir);
+const EXPECTED_CODEX_SKILL_NAMES = new Set(SKILL_SPECS.map(spec => spec.codexName));
 
 function resolveCodexSkillName(skillDirName: string | null): string {
   if (!skillDirName) return 'gstack';
@@ -1086,29 +1076,74 @@ function processTemplate(tmplPath: string): { outputPath: string; content: strin
   return { outputPath, content };
 }
 
-// ─── Main ───────────────────────────────────────────────────
+function codexSupportTreeIsFresh(): boolean {
+  const codexRoot = path.join(ROOT, '.agents', 'skills', 'gstack');
+  const expected = new Map(discoverCodexSupportLinks(ROOT).map(link => [link.name, link.target]));
 
-function findTemplates(): string[] {
-  const templates: string[] = [];
-  const stack = [ROOT];
+  if (!fs.existsSync(codexRoot)) return false;
 
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      if (entry.name === '.git' || entry.name === '.claude' || entry.name === '.agents' || entry.name === 'node_modules') {
-        continue;
-      }
+  const existingNames = fs.readdirSync(codexRoot).filter(name => name !== 'SKILL.md').sort();
+  const expectedNames = [...expected.keys()].sort();
+  if (existingNames.length !== expectedNames.length) return false;
+  if (existingNames.some((name, index) => name !== expectedNames[index])) return false;
 
-      const fullPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-      } else if (entry.isFile() && entry.name === 'SKILL.md.tmpl') {
-        templates.push(fullPath);
-      }
+  for (const [name, target] of expected) {
+    const linkPath = path.join(codexRoot, name);
+    try {
+      if (fs.readlinkSync(linkPath) !== target) return false;
+    } catch {
+      return false;
     }
   }
 
-  return templates.sort((left, right) => left.localeCompare(right));
+  return true;
+}
+
+function codexSkillDirsAreFresh(): boolean {
+  const skillsRoot = path.join(ROOT, '.agents', 'skills');
+  if (!fs.existsSync(skillsRoot)) return false;
+
+  const existing = fs.readdirSync(skillsRoot)
+    .filter(name => name === 'gstack' || name.startsWith('gstack-'))
+    .sort();
+  const expected = [...EXPECTED_CODEX_SKILL_NAMES].sort();
+
+  return existing.length === expected.length && existing.every((name, index) => name === expected[index]);
+}
+
+function pruneUnexpectedCodexSkillDirs(): void {
+  const skillsRoot = path.join(ROOT, '.agents', 'skills');
+  if (!fs.existsSync(skillsRoot)) return;
+
+  for (const entry of fs.readdirSync(skillsRoot)) {
+    if (entry !== 'gstack' && !entry.startsWith('gstack-')) continue;
+    if (EXPECTED_CODEX_SKILL_NAMES.has(entry)) continue;
+    fs.rmSync(path.join(skillsRoot, entry), { recursive: true, force: true });
+  }
+}
+
+function syncCodexSupportTree(): void {
+  const codexRoot = path.join(ROOT, '.agents', 'skills', 'gstack');
+  const expectedLinks = discoverCodexSupportLinks(ROOT);
+  const expectedNames = new Set(expectedLinks.map(link => link.name));
+
+  fs.mkdirSync(codexRoot, { recursive: true });
+
+  for (const entry of fs.readdirSync(codexRoot)) {
+    if (entry === 'SKILL.md' || expectedNames.has(entry)) continue;
+    fs.rmSync(path.join(codexRoot, entry), { recursive: true, force: true });
+  }
+
+  for (const link of expectedLinks) {
+    fs.rmSync(link.linkPath, { recursive: true, force: true });
+    fs.symlinkSync(link.target, link.linkPath);
+  }
+}
+
+// ─── Main ───────────────────────────────────────────────────
+
+function findTemplates(): string[] {
+  return SKILL_SPECS.map(spec => spec.templatePath);
 }
 
 let hasChanges = false;
@@ -1129,6 +1164,29 @@ for (const tmplPath of findTemplates()) {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, content);
     console.log(`GENERATED: ${relOutput}`);
+  }
+}
+
+if (HOST === 'codex') {
+  if (DRY_RUN) {
+    if (!codexSkillDirsAreFresh()) {
+      console.log('STALE: .agents/skills generated tree');
+      hasChanges = true;
+    } else {
+      console.log('FRESH: .agents/skills generated tree');
+    }
+
+    if (!codexSupportTreeIsFresh()) {
+      console.log('STALE: .agents/skills/gstack support tree');
+      hasChanges = true;
+    } else {
+      console.log('FRESH: .agents/skills/gstack support tree');
+    }
+  } else {
+    pruneUnexpectedCodexSkillDirs();
+    syncCodexSupportTree();
+    console.log('GENERATED: .agents/skills generated tree');
+    console.log('GENERATED: .agents/skills/gstack support tree');
   }
 }
 

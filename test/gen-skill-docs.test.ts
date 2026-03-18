@@ -1,35 +1,15 @@
 import { describe, test, expect } from 'bun:test';
 import { COMMAND_DESCRIPTIONS } from '../browse/src/commands';
 import { SNAPSHOT_FLAGS } from '../browse/src/snapshot';
+import { discoverCodexSupportLinks, discoverSkillSpecs } from '../scripts/skill-manifest';
 import * as fs from 'fs';
 import * as path from 'path';
 
 const ROOT = path.resolve(import.meta.dir, '..');
-const ALL_SKILLS = [
-  { dir: '.', name: 'root gstack' },
-  { dir: 'browse', name: 'browse' },
-  { dir: 'qa', name: 'qa' },
-  { dir: 'qa-only', name: 'qa-only' },
-  { dir: 'review', name: 'review' },
-  { dir: 'ship', name: 'ship' },
-  { dir: 'plan-ceo-review', name: 'plan-ceo-review' },
-  { dir: 'plan-eng-review', name: 'plan-eng-review' },
-  { dir: 'retro', name: 'retro' },
-  { dir: 'setup-browser-cookies', name: 'setup-browser-cookies' },
-  { dir: 'gstack-upgrade', name: 'gstack-upgrade' },
-  { dir: 'plan-design-review', name: 'plan-design-review' },
-  { dir: 'qa-design-review', name: 'qa-design-review' },
-  { dir: 'design-consultation', name: 'design-consultation' },
-  { dir: 'document-release', name: 'document-release' },
-];
-
-function codexSkillName(dir: string): string {
-  if (dir === '.') return 'gstack';
-  return dir.startsWith('gstack-') ? dir : `gstack-${dir}`;
-}
+const ALL_SKILLS = discoverSkillSpecs(ROOT);
 
 function codexSkillPath(dir: string): string {
-  return path.join(ROOT, '.agents', 'skills', codexSkillName(dir), 'SKILL.md');
+  return ALL_SKILLS.find(skill => skill.dir === dir)!.codexOutputPath;
 }
 
 describe('gen-skill-docs', () => {
@@ -84,16 +64,14 @@ describe('gen-skill-docs', () => {
 
   test('every skill has a SKILL.md.tmpl template', () => {
     for (const skill of ALL_SKILLS) {
-      const tmplPath = path.join(ROOT, skill.dir, 'SKILL.md.tmpl');
-      expect(fs.existsSync(tmplPath)).toBe(true);
+      expect(fs.existsSync(skill.templatePath)).toBe(true);
     }
   });
 
   test('every skill has a generated SKILL.md with auto-generated header', () => {
     for (const skill of ALL_SKILLS) {
-      const mdPath = path.join(ROOT, skill.dir, 'SKILL.md');
-      expect(fs.existsSync(mdPath)).toBe(true);
-      const content = fs.readFileSync(mdPath, 'utf-8');
+      expect(fs.existsSync(skill.outputPath)).toBe(true);
+      const content = fs.readFileSync(skill.outputPath, 'utf-8');
       expect(content).toContain('AUTO-GENERATED from SKILL.md.tmpl');
       expect(content).toContain('Regenerate: bun run gen:skill-docs');
     }
@@ -101,7 +79,7 @@ describe('gen-skill-docs', () => {
 
   test('every generated SKILL.md has valid YAML frontmatter', () => {
     for (const skill of ALL_SKILLS) {
-      const content = fs.readFileSync(path.join(ROOT, skill.dir, 'SKILL.md'), 'utf-8');
+      const content = fs.readFileSync(skill.outputPath, 'utf-8');
       expect(content.startsWith('---\n')).toBe(true);
       expect(content).toContain('name:');
       expect(content).toContain('description:');
@@ -118,7 +96,7 @@ describe('gen-skill-docs', () => {
     const output = result.stdout.toString();
     // Every skill should be FRESH
     for (const skill of ALL_SKILLS) {
-      const file = skill.dir === '.' ? 'SKILL.md' : `${skill.dir}/SKILL.md`;
+      const file = path.relative(ROOT, skill.outputPath);
       expect(output).toContain(`FRESH: ${file}`);
     }
     expect(output).not.toContain('STALE');
@@ -136,12 +114,14 @@ describe('gen-skill-docs', () => {
       const file = path.relative(ROOT, codexSkillPath(skill.dir));
       expect(output).toContain(`FRESH: ${file}`);
     }
+    expect(output).toContain('FRESH: .agents/skills generated tree');
+    expect(output).toContain('FRESH: .agents/skills/gstack support tree');
     expect(output).not.toContain('STALE');
   });
 
   test('no generated SKILL.md contains unresolved placeholders', () => {
     for (const skill of ALL_SKILLS) {
-      const content = fs.readFileSync(path.join(ROOT, skill.dir, 'SKILL.md'), 'utf-8');
+      const content = fs.readFileSync(skill.outputPath, 'utf-8');
       const unresolved = content.match(/\{\{[A-Z_]+\}\}/g);
       expect(unresolved).toBeNull();
     }
@@ -150,7 +130,7 @@ describe('gen-skill-docs', () => {
   test('every Codex skill has a generated SKILL.md with a host-specific header', () => {
     for (const skill of ALL_SKILLS) {
       const content = fs.readFileSync(codexSkillPath(skill.dir), 'utf-8');
-      const source = skill.dir === '.' ? 'SKILL.md.tmpl' : `${skill.dir}/SKILL.md.tmpl`;
+      const source = path.relative(ROOT, skill.templatePath);
       expect(content).toContain(`AUTO-GENERATED from ${source}`);
       expect(content).toContain('Regenerate: bun run gen:skill-docs --host codex');
     }
@@ -180,6 +160,13 @@ describe('gen-skill-docs', () => {
     expect(browseTmpl).toContain('{{COMMAND_REFERENCE}}');
     expect(browseTmpl).toContain('{{SNAPSHOT_FLAGS}}');
     expect(browseTmpl).toContain('{{PREAMBLE}}');
+  });
+
+  test('Codex support tree includes links for every discovered skill and shared helper entry', () => {
+    for (const link of discoverCodexSupportLinks(ROOT)) {
+      expect(fs.existsSync(link.linkPath)).toBe(true);
+      expect(fs.readlinkSync(link.linkPath)).toBe(link.target);
+    }
   });
 
   test('generated SKILL.md contains contributor mode check', () => {
